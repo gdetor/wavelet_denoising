@@ -4,7 +4,9 @@ import matplotlib.pylab as plt
 
 from scipy.signal import butter, filtfilt
 from scipy.signal import spectrogram
-# from scipy.signal import periodogram
+
+from sklearn.preprocessing import MinMaxScaler
+
 from ml_decomposition import wavelet_denoising
 
 
@@ -19,62 +21,66 @@ def plot_coeffs_distribution(coeffs):
         ax.hist(coeffs[i], bins=50)
 
 
-def run_experiment(data, presented_data_len=100):
-    method = 'universal'
-    wd = wavelet_denoising(normalize=False, wavelet='bior4.4', level=None,
-                           mode='soft', method=method, resolution=100,
-                           energy_perc=[0.99, 0.97, 0.85])
-    denoised_data_univ = wd.transform(data)
-    wd.method = 'sure'
-    denoised_data_sure = wd.transform(data)
-    wd.method = 'energy'
-    denoised_data_lala = wd.transform(data)
-
+def pretty_plot(data, titles, palet, fs=1, length=100, nperseg=256):
     fig = plt.figure(figsize=(13, 13))
-    K = presented_data_len
-    ax = fig.add_subplot(421)
-    ax.plot(data[:K], 'b')
-    ax.set_title("Original Data")
-    ax = fig.add_subplot(422)
-    f, t, Sxx = spectrogram(data, fs=fs)
-    ax.pcolormesh(t, f, Sxx)
-    # ax.psd(data, Fs=fs)
-    ax = fig.add_subplot(423)
-    ax.plot(denoised_data_univ[:K], 'm')
-    ax.set_title("Universal Method")
-    ax = fig.add_subplot(424)
-    f, t, Sxx = spectrogram(denoised_data_univ, fs=fs)
-    ax.pcolormesh(t, f, Sxx)
-    # ax.psd(denoised_data_univ[:K], Fs=fs)
-    ax = fig.add_subplot(425)
-    ax.plot(denoised_data_sure[:K], 'k')
-    ax.set_title("SURE Method")
-    ax = fig.add_subplot(426)
-    f, t, Sxx = spectrogram(denoised_data_sure, fs=fs)
-    ax.pcolormesh(t, f, Sxx)
-    # ax.psd(denoised_data_sure[:K], Fs=fs)
-    ax = fig.add_subplot(427)
-    ax.plot(denoised_data_lala[:K], 'c')
-    ax.set_title("Energy Method")
-    ax = fig.add_subplot(428)
-    f, t, Sxx = spectrogram(denoised_data_lala, fs=fs)
-    ax.pcolormesh(t, f, Sxx)
-    # ax.psd(denoised_data_lala[:K], Fs=fs)
+    fig.subplots_adjust(hspace=0.5, wspace=0.5)
+    index = 1
+    for i, d in enumerate(data):
+        ax = fig.add_subplot(8, 2, index)
+        ax.plot(d[:length], color=palet[i])
+        ax.set_title(titles[i])
+        ax = fig.add_subplot(8, 2, index+1)
+        f, t, Sxx = spectrogram(d, fs=fs, nperseg=nperseg)
+        ax.pcolormesh(t, f, Sxx)
+        index += 2
+
+
+def run_experiment(data, fs=1, nperseg=256, length=100):
+    titles = ['Original data',
+              'Universal Method',
+              'SURE Method',
+              'SURE Method (theoretical)',
+              'Energy Method',
+              'MinMax Method',
+              'SQTWOLOG Method',
+              'Heursure Method']
+
+    experiment = ['universal',
+                  'rigsure',
+                  'fullsure',
+                  'energy',
+                  'minmax',
+                  'sqtwolog',
+                  'heursure']
+
+    wd = wavelet_denoising(normalize=False,
+                           wavelet='bior4.4',
+                           level=None,
+                           mode='soft',
+                           method="universal",
+                           resolution=100,
+                           energy_perc=[0.99, 0.97, 0.85])
+    res = [data]
+    for i, e in enumerate(experiment):
+        wd.method = experiment[i]
+        res.append(wd.fit(data))
+    palet = ['r', 'b', 'k', 'm', 'c', 'orange', 'g', 'y']
+    pretty_plot(res, titles, palet, fs=fs, length=length, nperseg=nperseg)
 
 
 if __name__ == '__main__':
-    # EKG Data
+    # ECG Data
     fs = 100
     raw_data = pd.read_pickle("data/apnea_ecg.pkl")
     N = int(len(raw_data) // 1000)
     data = raw_data[:N].values
     data = data[:, 0]
-    run_experiment(data)
+    run_experiment(data, fs=fs)
 
-    # data = np.zeros((128,))
-    # data[:16] = 4
-    # data += np.random.normal(0, 1, (128,))
-    # run_experiment(data, presented_data_len=16)
+    data = np.zeros((128,))
+    data[:16] = 4
+    data += np.random.normal(0, 1, (128,))
+    run_experiment(data, length=100, nperseg=32)
 
     raw_data = np.genfromtxt("./data/Z001.txt")
     fc = 40
@@ -82,5 +88,4 @@ if __name__ == '__main__':
     w = fc / (fs / 2)
     b, a = butter(5, w, 'low')
     data = filtfilt(b, a, raw_data)
-    run_experiment(data)
-    plt.show()
+    run_experiment(data, fs=fs)
