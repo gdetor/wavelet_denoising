@@ -89,3 +89,4 @@ if __name__ == '__main__':
     b, a = butter(5, w, 'low')
     data = filtfilt(b, a, raw_data)
     run_experiment(data, fs=fs)
+    plt.show()
