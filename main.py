@@ -5,9 +5,7 @@ import matplotlib.pylab as plt
 from scipy.signal import butter, filtfilt
 from scipy.signal import spectrogram
 
-from sklearn.preprocessing import MinMaxScaler
-
-from ml_decomposition import wavelet_denoising
+from ml_decomposition import WaveletDenoising
 
 
 def plot_coeffs_distribution(coeffs):
@@ -31,17 +29,16 @@ def pretty_plot(data, titles, palet, fs=1, length=100, nperseg=256):
         ax.set_title(titles[i])
         ax = fig.add_subplot(8, 2, index+1)
         f, t, Sxx = spectrogram(d, fs=fs, nperseg=nperseg)
-        ax.pcolormesh(t, f, Sxx)
+        ax.pcolormesh(t, f, Sxx, shading='auto')
         index += 2
 
 
-def run_experiment(data, fs=1, nperseg=256, length=100):
+def run_experiment(data, level=2, fs=1, nperseg=256, length=100):
     titles = ['Original data',
               'Universal Method',
               'SURE Method',
               'SURE Method (theoretical)',
               'Energy Method',
-              'MinMax Method',
               'SQTWOLOG Method',
               'Heursure Method']
 
@@ -49,17 +46,16 @@ def run_experiment(data, fs=1, nperseg=256, length=100):
                   'rigsure',
                   'fullsure',
                   'energy',
-                  'minmax',
                   'sqtwolog',
                   'heursure']
 
-    wd = wavelet_denoising(normalize=False,
-                           wavelet='bior4.4',
-                           level=None,
-                           mode='soft',
-                           method="universal",
-                           resolution=100,
-                           energy_perc=[0.99, 0.97, 0.85])
+    wd = WaveletDenoising(normalize=False,
+                          wavelet='bior4.4',
+                          level=level,
+                          mode='soft',
+                          method="universal",
+                          resolution=100,
+                          energy_perc=0.90)
     res = [data]
     for i, e in enumerate(experiment):
         wd.method = experiment[i]
@@ -75,12 +71,12 @@ if __name__ == '__main__':
     N = int(len(raw_data) // 1000)
     data = raw_data[:N].values
     data = data[:, 0]
-    run_experiment(data, fs=fs)
+    run_experiment(data, level=3, fs=fs)
 
     data = np.zeros((128,))
     data[:16] = 4
     data += np.random.normal(0, 1, (128,))
-    run_experiment(data, length=100, nperseg=32)
+    run_experiment(data, level=3, length=100, nperseg=32)
 
     raw_data = np.genfromtxt("./data/Z001.txt")
     fc = 40
@@ -88,5 +84,5 @@ if __name__ == '__main__':
     w = fc / (fs / 2)
     b, a = butter(5, w, 'low')
     data = filtfilt(b, a, raw_data)
-    run_experiment(data, fs=fs)
+    run_experiment(data, level=4, fs=fs)
     plt.show()
