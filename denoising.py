@@ -33,29 +33,30 @@ def EuclideanNorm(x):
 
 
 def mad(x):
+    """! Estimates the Median Absolute Deviation (MAD). MAD is defined to be
+    the median of the absolute difference between the input X and median(X).
+
+    @param x The input signal (1D ndarray)
+    @return The median absolute deviation of the input signal
+
+    @note More details on the MAD can be found on the Wikipedia page:
+    please see https://en.wikipedia.org/wiki/Median_absolute_deviation
+    """
     return 1.482579 * np.median(np.abs(x - np.median(x)))
 
 
 def meanad(x):
+    """! Estimates the Mean Absolute Deviation (MeanAD). MeanAD is defined to
+    be the mean of the absolute difference between the input X and mean(X).
+
+    @param x The input signal (1D ndarray)
+    @return The mean absolute deviation of the input signal
+    """
     return 1.482579 * np.mean(np.abs(x - np.mean(x)))
 
 
 def grad_g_fun(x, thr=1):
     return (x >= thr) * 1 + (x <= -thr) * 1 + (np.abs(x) <= thr) * 0
-
-
-def transform_mean_var(signal, x, mu=None, sigma=None):
-    mu1 = x.mean()
-    sigma1 = signal.std()
-    if mu is None:
-        mu2 = mu1
-    else:
-        mu2 = mu
-    if sigma is None:
-        sigma2 = sigma1
-    else:
-        sigma2 = sigma
-    return mu2 + (x - mu1) * sigma2 / sigma1
 
 
 def NearestEvenInteger(n):
@@ -111,32 +112,85 @@ def SoftHardThresholding(x, thr=1, method='s'):
 # =====================================================================
 # Main wavelets denoising class
 # =====================================================================
-class WaveletDenoising(object):
+class WaveletDenoising:
+    """! Denoising class """
     def __init__(self,
                  normalize=False,
                  wavelet='haar',
-                 level=None,
-                 mode='soft',
+                 level=1,
+                 thr_mode='soft',
+                 recon_mode='smooth',
+                 selected_level=0,
                  method='universal',
                  resolution=100,
                  energy_perc=0.9):
+        """! Constructor of WaveletDenoising class.
+        @param normalize Enables the normalization of the input signal into
+        [0, 1] (bool)
+
+        @param wavelet Wavelet's type, e.g. 'db1', 'haar' (str)
+
+        @param level   Decomposition level (n), default value is 1.
+
+        @param thr_mode Type of thresholding ('soft' or 'hard') (str)
+
+        @param recon_mode Reconstruction signal extension mode. This can be
+        one of the following: 'smooth', 'symmetric', 'antisymmetric', 'zero',
+        'constant', 'periodic', 'reflect' (str).
+
+        @param selected_level
+
+        @param method Type of threshold determination method. This can be one
+        of the following:
+        - 'universal' - The threshold is the sqrt(2*length(signal))*mad
+        - 'sqtwolog' - The threshold is the sqrt(2*length(signal))
+        - 'stein' - Stein's unbiased risk estimator
+        - 'heurstein' - Heuristic of rigsure
+        - 'sure' - SURE estimator
+        - 'energy' - Computes the energy of the coefficients and retains a
+        predefined percentage of it.
+
+        @param resolution Determines the resolution of the SURE estimator
+
+        @param energy_perc Energy level retained in the coefficients when one
+        uses the energy thresholding method.
+
+        @return Nothing
+
+        @note For more details on modes see:
+        https://pywavelets.readthedocs.io/en/latest/ref/signal-extension-modes.html#ref-modes
+        """
         self.wavelet = wavelet
         self.level = level
         self.method = method
         self.resolution = resolution
-        self.mode = mode
+        self.thr_mode = thr_mode
+        self.selected_level = selected_level
+        self.recon_mode = recon_mode
         self.energy_perc = energy_perc
         self.normalize = normalize
 
-        self.filter_ = Wavelet(self.wavelet)
+        self.filter_ = Wavelet(self.wavelet)    # Wavelet function
 
+        # Check if level is None and set it to 1
         if level is None:
-            self.nlevel = 0
+            self.nlevel = 1
         else:
             self.nlevel = level
         self.normalized_data = None
 
     def fit(self, signal):
+        """! This method executes the denoising algorithm by invoking all the
+        necessary methods.
+            i. Preprocessing
+            ii. Multilayer Wavelet Decomposition
+            iii. Denoise the coefficients
+
+        @param signal A noisy input signal
+
+        @return A denoised version of the input signal
+
+        """
         tmp_signal = signal.copy()
         tmp_signal = self.Preprocess(tmp_signal)
         coeffs = self.WavTransform(tmp_signal)
@@ -146,9 +200,23 @@ class WaveletDenoising(object):
     # ********************************************************************
     # Preprocessing methods
     def Preprocess(self, signal, normalize=False):
+        """! This method removes all the trends from the input signal such as
+        DC currents. Furthermore, it can normalize the input signal into the
+        interval [0, 1].
+
+        @param signal The input signal (1D ndarray)
+        @param normalize A flag that determines if the input signal will be
+                         normalized into [0, 1] or not (bool)
+
+        @return A detrended signal (and normalized in case the normalization
+        flag is set to True)
+
+        """
         # Remove all the unnecessary trends (DC, etc)
         xhat = detrend(signal)
-        # Normalize the data (bring them into [0, 1])
+
+        # Normalize the data (bring them into [0, 1]) and keep the scaler for
+        # future use or inversing the normalization
         if self.normalize:
             self.scaler = MinMaxScaler(feature_range=(0, 1), copy=True)
             xhat = self.scaler.fit_transform(xhat.reshape(-1, 1))[:, 0]
@@ -156,15 +224,71 @@ class WaveletDenoising(object):
         return xhat
 
     # ********************************************************************
+    # Standard Deviation
+    def std(self, signal, level=None):
+        """! Estimates the standard deviation of the input signal for rescaling
+        the Wavelet's coefficients.
+
+        @param signal   The input signal (1D ndarray)
+        @param level    If level is None then the SD = 1 for all the
+                        coefficients. If level is a number other than the
+                        Wavelet's level then SD = MAD(cD1), where cD1 is the
+                        lowest Wavelet's coefficient. If level is the Wavelet's
+                        level then SD is computed on each coefficient
+                        separately.
+
+        @return Standard deviation of the input signal as (1D ndarray)
+        """
+        # If level is None return SD = 1 for all coefficients
+        if level is None:
+            sigma = np.ones((self.nlevel, ))
+            return sigma
+
+        # If level exceeds the decomposition level (n) then reduce
+        # the value of level to n - 1
+        if level > self.nlevel:
+            print("WARNING: The level you set exceeds the nominal value!")
+            print(" Level has been replaced by the largest possible\
+                  value")
+            level = self.nlevel - 1
+
+        # If level == n then estimate SD for each coefficient
+        elif level == self.nlevel:
+            sigma = np.array([1.4825 * np.median(np.abs(signal[i]))
+                              for i in range(self.nlevel)])
+        # else compute the SD only for the coefficient n = 1
+        else:
+            tmp_sigma = 1.4825 * np.median(np.abs(signal[self.nlevel-1]))
+            sigma = np.array([tmp_sigma for _ in range(self.nlevel)])
+        return sigma
+
+    # ********************************************************************
     # Multilevel wavelet decomposition
     def WavTransform(self, signal):
+        """! Performs a Wavelet multilevel decomposition on the input signal.
+        This method first will estimate the power of two nearest to the length
+        of the signal. Then it will check the values of level (n) and in case
+        level is set to zero it will compute the optimal level using the
+        function dwt_max_level. Finally, it will perform the decomposition
+        on the signal[:size], where size is a power of two closest to the
+        length of the input signal.
+
+        @param signal The input signal (1D ndarray)
+
+        @return The wavelet coefficients as a list. First appears the
+        approximation coefficient cA and then the detail coefficients in the
+        order cD_n, cD_n-1, ..., cD2, cD_1
+
+        """
         # Find the nearest even integer to input signal's length
         size = NearestEvenInteger(signal.shape[0])
+
         # Check if a WAVEDEC level has been provided otherwise infer one
         if self.nlevel == 0:
             level = dwt_max_level(signal.shape[0],
                                   filter_len=self.filter_.dec_len)
             self.nlevel = level
+
         # Compute the Wavelet coefficients using WAVEDEC
         coeffs = wavedec(signal[:size], self.filter_, level=self.nlevel)
         return coeffs
@@ -172,16 +296,33 @@ class WaveletDenoising(object):
     # ********************************************************************
     # Main denoising method
     def Denoise(self, signal, coeffs):
+        """! Denoises the input signal based on its wavelet coefficients. This
+        method first computes the SD of the detail coefficients, then
+        determines the appropriate threshold, applies the threshold on the
+        coefficients, and then proceeds in the signal's denoisinig. Finally,
+        if the normalization flag is True, it renormalizes the input signal
+        back to its original space.
+
+        @param signal The input signal to be denoised
+        @param coeffs The wavelet multilevel decomposition coefficients
+
+        @return The denoised signal
+        """
+        # Estimate the SD of the wavelet coefficients
+        sigma = self.std(coeffs[1:], level=self.selected_level)
+
         # Determine the threshold for the coefficients based on the level of
         # WAVEDEC
-        thr = self.DetermineThreshold(coeffs[-self.nlevel], self.energy_perc)
+        thr = [self.DetermineThreshold(coeffs[1+level] / sigma[level],
+                                       self.energy_perc) * sigma[level]
+               for level in range(self.nlevel)]
 
         # Apply the threshold to all the coefficients
-        coeffs[1:] = [threshold(c, value=thr, mode=self.mode)
-                      for c in coeffs[1:]]
+        coeffs[1:] = [threshold(c, value=thr[i], mode=self.thr_mode)
+                      for i, c in enumerate(coeffs[1:])]
 
         # Apply the WAVEREC to reconstruct the signal
-        denoised_signal = waverec(coeffs, self.filter_, mode='smooth')
+        denoised_signal = waverec(coeffs, self.filter_, mode=self.recon_mode)
 
         # Renormalize in case the input signal was normalized to [0, 1]
         if self.normalize:
@@ -191,20 +332,40 @@ class WaveletDenoising(object):
 
     # ********************************************************************
     # Thresholding methods
-    def DetermineThreshold(self, signal, energy_perc):
+    def DetermineThreshold(self, signal, energy_perc=0.9):
+        """! Determines the value of the threshold. It offers six different
+        methods:
+        - 'universal' - The threshold is the sqrt(2*length(signal))*mad
+        - 'sqtwolog' - The threshold is the sqrt(2*length(signal))
+        - 'stein' - Stein's unbiased risk estimator
+        - 'heurstein' - Heuristic of rigsure
+        - 'sure' - SURE estimator
+        - 'energy' - Computes the energy of the coefficients and retains a
+        predefined percentage of it.
+        The method is defined in the constructor (see self.method).
+
+        @param signal The input signal (1D ndarray)
+        @param energy_perc The percentage of energy to be retained in the case
+        one uses the energy method to determine the threshold (float)
+
+        @return The value of the threshold (float)
+
+        @note In case the method provided by the user does not exist, this
+        method will fallback to the 'universal' method.
+        """
         thr = 0.0
         if self.method == 'universal':
             thr = self.UniversalThreshold(signal)
-        elif self.method == 'heursure':
-            thr = self.heursure_thresholding(signal)
+        elif self.method == 'heurstein':
+            thr = self.HEURSTEINThreshold(signal)
         elif self.method == 'sqtwolog':
             thr = self.SquareRootLogThreshold(signal)
-        elif self.method == 'rigsure':
-            thr = self.sure_thresholding(signal)
+        elif self.method == 'stein':
+            thr = self.STEINThreshold(signal)
         elif self.method == 'energy':
             thr = self.EnergyThreshold(signal, perc=energy_perc)
-        elif self.method == 'fullsure':
-            thr = self.SURETheoreticThreshold(signal)
+        elif self.method == 'sure':
+            thr = self.SUREThreshold(signal)
         else:
             print("No such method detected!")
             print("Set back to default (universal thresholding)!")
@@ -225,14 +386,16 @@ class WaveletDenoising(object):
         return thr
 
     def SURE_auxiliary(self, signal, thr):
+        """! """
         m = signal.shape[0]
         sigma = mad(signal)
-        g_fun = threshold(signal, value=thr, mode=self.mode) - signal
+        g_fun = threshold(signal, value=thr, mode=self.thr_mode) - signal
         norm_g = EuclideanNorm(g_fun)
         grad_sum = sum([grad_g_fun(x, thr=thr) for x in signal])
         return sigma**2 + (norm_g**2 + 2*sigma**2*grad_sum) / m
 
-    def SURETheoreticThreshold(self, signal):
+    def SUREThreshold(self, signal):
+        """! """
         t = np.linspace(1e-1, 2*np.log(signal.shape[0]), self.resolution)
         thr_values = []
         for i in range(self.resolution):
@@ -241,7 +404,8 @@ class WaveletDenoising(object):
         opt_thr = t[np.argmin(thr_values)]
         return opt_thr
 
-    def sure_thresholding(self, signal):
+    def STEINThreshold(self, signal):
+        """! """
         m = signal.shape[0]
         sorted_signal = np.sort(np.abs(signal))**2
         c = np.linspace(m-1, 0, m)
@@ -251,7 +415,10 @@ class WaveletDenoising(object):
         thr = np.sqrt(sorted_signal[ibest])
         return thr
 
-    def heursure_thresholding(self, signal):
+    def HEURSTEINThreshold(self, signal):
+        """!
+
+        """
         m, j = DyadicLength(signal)
         magic = np.sqrt(2 * np.log(m))
         eta = (np.linalg.norm(signal)**2 - m) / m

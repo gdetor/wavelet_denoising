@@ -5,7 +5,7 @@ import matplotlib.pylab as plt
 from scipy.signal import butter, filtfilt
 from scipy.signal import spectrogram
 
-from ml_decomposition import WaveletDenoising
+from denoising import WaveletDenoising
 
 
 def plot_coeffs_distribution(coeffs):
@@ -50,9 +50,10 @@ def run_experiment(data, level=2, fs=1, nperseg=256, length=100):
                   'heursure']
 
     wd = WaveletDenoising(normalize=False,
-                          wavelet='bior4.4',
+                          wavelet='db3',
                           level=level,
-                          mode='soft',
+                          thr_mode='soft',
+                          selected_level=None,
                           method="universal",
                           resolution=100,
                           energy_perc=0.90)
@@ -60,8 +61,14 @@ def run_experiment(data, level=2, fs=1, nperseg=256, length=100):
     for i, e in enumerate(experiment):
         wd.method = experiment[i]
         res.append(wd.fit(data))
+
     palet = ['r', 'b', 'k', 'm', 'c', 'orange', 'g', 'y']
-    pretty_plot(res, titles, palet, fs=fs, length=length, nperseg=nperseg)
+    pretty_plot(res,
+                titles,
+                palet,
+                fs=fs,
+                length=length,
+                nperseg=nperseg)
 
 
 if __name__ == '__main__':
