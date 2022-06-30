@@ -89,7 +89,7 @@ def DyadicLength(x):
 
 
 def SoftHardThresholding(x, thr=1, method='s'):
-    """! Performs either a soft or a hard thresholding on the input signal x.
+    """! Performs either a soft or hard thresholding on the input signal x.
 
     @param x The 1D input signal
     @param thr The threshold value (float, default=1)
@@ -130,7 +130,7 @@ class WaveletDenoising:
 
         @param wavelet Wavelet's type, e.g. 'db1', 'haar' (str)
 
-        @param level   Decomposition level (n), default value is 1.
+        @param level   Decomposition level (n), the default value is 1.
 
         @param thr_mode Type of thresholding ('soft' or 'hard') (str)
 
@@ -157,7 +157,7 @@ class WaveletDenoising:
 
         @return Nothing
 
-        @note For more details on modes see:
+        @note For more details on modes, see:
         https://pywavelets.readthedocs.io/en/latest/ref/signal-extension-modes.html#ref-modes
         """
         self.wavelet = wavelet
@@ -183,7 +183,7 @@ class WaveletDenoising:
         """! This method executes the denoising algorithm by invoking all the
         necessary methods.
             i. Preprocessing
-            ii. Multilayer Wavelet Decomposition
+            ii. Multilevel Wavelet Decomposition
             iii. Denoise the coefficients
 
         @param signal A noisy input signal
@@ -200,7 +200,7 @@ class WaveletDenoising:
     # ********************************************************************
     # Preprocessing methods
     def Preprocess(self, signal, normalize=False):
-        """! This method removes all the trends from the input signal such as
+        """! This method removes all the trends from the input signal, such as
         DC currents. Furthermore, it can normalize the input signal into the
         interval [0, 1].
 
@@ -232,7 +232,7 @@ class WaveletDenoising:
         @param signal   The input signal (1D ndarray)
         @param level    If level is None then the SD = 1 for all the
                         coefficients. If level is a number other than the
-                        Wavelet's level then SD = MAD(cD1), where cD1 is the
+                        Wavelet's level, then SD = MAD(cD1), where cD1 is the
                         lowest Wavelet's coefficient. If level is the Wavelet's
                         level then SD is computed on each coefficient
                         separately.
@@ -267,7 +267,7 @@ class WaveletDenoising:
     def WavTransform(self, signal):
         """! Performs a Wavelet multilevel decomposition on the input signal.
         This method first will estimate the power of two nearest to the length
-        of the signal. Then it will check the values of level (n) and in case
+        of the signal. Then it will check the values of level (n), and in case
         level is set to zero it will compute the optimal level using the
         function dwt_max_level. Finally, it will perform the decomposition
         on the signal[:size], where size is a power of two closest to the
@@ -299,7 +299,7 @@ class WaveletDenoising:
         """! Denoises the input signal based on its wavelet coefficients. This
         method first computes the SD of the detail coefficients, then
         determines the appropriate threshold, applies the threshold on the
-        coefficients, and then proceeds in the signal's denoisinig. Finally,
+        coefficients, and then proceed in the signal's denoising. Finally,
         if the normalization flag is True, it renormalizes the input signal
         back to its original space.
 
@@ -333,13 +333,12 @@ class WaveletDenoising:
     # ********************************************************************
     # Thresholding methods
     def DetermineThreshold(self, signal, energy_perc=0.9):
-        """! Determines the value of the threshold. It offers six different
+        """! Determines the value of the threshold. It offers five different
         methods:
         - 'universal' - The threshold is the sqrt(2*length(signal))*mad
         - 'sqtwolog' - The threshold is the sqrt(2*length(signal))
         - 'stein' - Stein's unbiased risk estimator
-        - 'heurstein' - Heuristic of rigsure
-        - 'sure' - SURE estimator
+        - 'heurstein' - Heuristic implementation of rigsure
         - 'energy' - Computes the energy of the coefficients and retains a
         predefined percentage of it.
         The method is defined in the constructor (see self.method).
@@ -351,61 +350,51 @@ class WaveletDenoising:
         @return The value of the threshold (float)
 
         @note In case the method provided by the user does not exist, this
-        method will fallback to the 'universal' method.
+        method will fall back to the 'universal' method.
         """
         thr = 0.0
         if self.method == 'universal':
             thr = self.UniversalThreshold(signal)
-        elif self.method == 'heurstein':
-            thr = self.HEURSTEINThreshold(signal)
         elif self.method == 'sqtwolog':
-            thr = self.SquareRootLogThreshold(signal)
+            thr = self.UniversalThreshold(signal, sigma=False)
         elif self.method == 'stein':
-            thr = self.STEINThreshold(signal)
+            thr = self.SteinThreshold(signal)
+        elif self.method == 'heurstein':
+            thr = self.HeurSteinThreshold(signal)
         elif self.method == 'energy':
             thr = self.EnergyThreshold(signal, perc=energy_perc)
-        elif self.method == 'sure':
-            thr = self.SUREThreshold(signal)
         else:
             print("No such method detected!")
             print("Set back to default (universal thresholding)!")
             thr = self.UniversalThreshold(signal)
         return thr
 
-    def UniversalThreshold(self, signal):
+    def UniversalThreshold(self, signal, sigma=True):
         """! Universal threshold
         @param signal Input signal (1D ndarray of floats)
+        @param sigma If true multiplies the term sqrt(2xlog(m)) with the MAD
+        value of the input signal (m is the input signal's length)
 
         @return A float scaler representing the threshold value
         """
         m = signal.shape[0]
-        sigma = mad(signal)
-        # sigma = meanad(signal)
-        thr = sigma * np.sqrt((2*np.log(m)) / m)
-        # thres = sigma * np.sqrt(2 * np.log(m))
+        if sigma:
+            sd = mad(signal)
+            # sigma = meanad(signal)
+        else:
+            sd = 1.0
+        # thr = sd * np.sqrt((2*np.log(m)) / m)
+        thr = sd * np.sqrt(2 * np.log(m))
         return thr
 
-    def SURE_auxiliary(self, signal, thr):
-        """! """
-        m = signal.shape[0]
-        sigma = mad(signal)
-        g_fun = threshold(signal, value=thr, mode=self.thr_mode) - signal
-        norm_g = EuclideanNorm(g_fun)
-        grad_sum = sum([grad_g_fun(x, thr=thr) for x in signal])
-        return sigma**2 + (norm_g**2 + 2*sigma**2*grad_sum) / m
+    def SteinThreshold(self, signal):
+        """! An implementation of Stein's unbiased rist estimator based on
+        PyYAWT package.
 
-    def SUREThreshold(self, signal):
-        """! """
-        t = np.linspace(1e-1, 2*np.log(signal.shape[0]), self.resolution)
-        thr_values = []
-        for i in range(self.resolution):
-            thr_values.append(self.SURE_auxiliary(signal, thr=t[i]))
-        thr_values = np.array(thr_values)
-        opt_thr = t[np.argmin(thr_values)]
-        return opt_thr
+        @param signal The input signal
 
-    def STEINThreshold(self, signal):
-        """! """
+        @return The value of the threshold for the input signal
+        """
         m = signal.shape[0]
         sorted_signal = np.sort(np.abs(signal))**2
         c = np.linspace(m-1, 0, m)
@@ -415,9 +404,13 @@ class WaveletDenoising:
         thr = np.sqrt(sorted_signal[ibest])
         return thr
 
-    def HEURSTEINThreshold(self, signal):
-        """!
+    def HeurSteinThreshold(self, signal):
+        """! A heuristic implementation of Stein's unbiased rist estimator
+        based on PyYAWT package.
 
+        @param signal The input signal
+
+        @return The value of the threshold for the input signal
         """
         m, j = DyadicLength(signal)
         magic = np.sqrt(2 * np.log(m))
@@ -426,7 +419,7 @@ class WaveletDenoising:
         if eta < critical:
             thr = magic
         else:
-            thr = np.min((self.sure_thresholding(signal), magic))
+            thr = np.min((self.SteinThreshold(signal), magic))
         return thr
 
     def SquareRootLogThreshold(self, signal):
@@ -445,10 +438,10 @@ class WaveletDenoising:
 
     def EnergyThreshold(self, signal, perc=0.1):
         """! Energy-based threshold method. It estimates a threshold value for
-        the input signal based on signal's energy.
+        the input signal based on the signal's energy.
 
-        @param signal Input signal (1D ndarray of floats)
-        @param perc   Energy retained percentage (flaot scaler)
+        @param signal Input signal (1D ndarray)
+        @param perc   Energy retained percentage (float)
 
         @return A float scaler representing the threshold value
         """

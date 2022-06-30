@@ -1,14 +1,15 @@
 import numpy as np
-import pandas as pd
+# import pandas as pd
 import matplotlib.pylab as plt
 
-from scipy.signal import butter, filtfilt
+# from scipy.signal import butter, filtfilt
 from scipy.signal import spectrogram
 
 from denoising import WaveletDenoising
 
 
 def plot_coeffs_distribution(coeffs):
+    """! Plots all the wavelet decomposition's coefficients. """
     fig = plt.figure()
     size_ = int(len(coeffs) // 2) + 1
     if size_ % 2 != 0:
@@ -20,6 +21,7 @@ def plot_coeffs_distribution(coeffs):
 
 
 def pretty_plot(data, titles, palet, fs=1, length=100, nperseg=256):
+    """! Plots the contents of the list data. """
     fig = plt.figure(figsize=(13, 13))
     fig.subplots_adjust(hspace=0.5, wspace=0.5)
     index = 1
@@ -34,34 +36,42 @@ def pretty_plot(data, titles, palet, fs=1, length=100, nperseg=256):
 
 
 def run_experiment(data, level=2, fs=1, nperseg=256, length=100):
+    """! Run the wavelet denoising over the input data for each threshold
+    method.
+    """
+
+    # Experiments titles / thresholding methods
     titles = ['Original data',
               'Universal Method',
               'SURE Method',
-              'SURE Method (theoretical)',
               'Energy Method',
               'SQTWOLOG Method',
               'Heursure Method']
 
+    # Theshold methods
     experiment = ['universal',
-                  'rigsure',
-                  'fullsure',
+                  'stein',
                   'energy',
                   'sqtwolog',
-                  'heursure']
+                  'heurstein']
 
+    # WaveletDenoising class instance
     wd = WaveletDenoising(normalize=False,
                           wavelet='db3',
                           level=level,
                           thr_mode='soft',
-                          selected_level=None,
+                          selected_level=level,
                           method="universal",
                           resolution=100,
                           energy_perc=0.90)
+
+    # Run all the experiments, first element in res is the original data
     res = [data]
     for i, e in enumerate(experiment):
         wd.method = experiment[i]
         res.append(wd.fit(data))
 
+    # Plot all the results for comparison
     palet = ['r', 'b', 'k', 'm', 'c', 'orange', 'g', 'y']
     pretty_plot(res,
                 titles,
@@ -73,23 +83,24 @@ def run_experiment(data, level=2, fs=1, nperseg=256, length=100):
 
 if __name__ == '__main__':
     # ECG Data
-    fs = 100
-    raw_data = pd.read_pickle("data/apnea_ecg.pkl")
-    N = int(len(raw_data) // 1000)
-    data = raw_data[:N].values
-    data = data[:, 0]
-    run_experiment(data, level=3, fs=fs)
+    # fs = 100
+    # raw_data = pd.read_pickle("data/apnea_ecg.pkl")
+    # N = int(len(raw_data) // 1000)
+    # data = raw_data[:N].values
+    # data = data[:, 0]
+    # run_experiment(data, level=3, fs=fs)
 
     data = np.zeros((128,))
     data[:16] = 4
     data += np.random.normal(0, 1, (128,))
     run_experiment(data, level=3, length=100, nperseg=32)
 
-    raw_data = np.genfromtxt("./data/Z001.txt")
-    fc = 40
-    fs = 173.61
-    w = fc / (fs / 2)
-    b, a = butter(5, w, 'low')
-    data = filtfilt(b, a, raw_data)
-    run_experiment(data, level=4, fs=fs)
+    # EEG Data
+    # raw_data = np.genfromtxt("./data/Z001.txt")
+    # fc = 40
+    # fs = 173.61
+    # w = fc / (fs / 2)
+    # b, a = butter(5, w, 'low')
+    # data = filtfilt(b, a, raw_data)
+    # run_experiment(data, level=4, fs=fs)
     plt.show()
