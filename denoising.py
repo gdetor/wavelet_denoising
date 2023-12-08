@@ -122,7 +122,6 @@ class WaveletDenoising:
                  recon_mode='smooth',
                  selected_level=0,
                  method='universal',
-                 resolution=100,
                  energy_perc=0.9):
         """! Constructor of WaveletDenoising class.
         @param normalize Enables the normalization of the input signal into
@@ -146,11 +145,8 @@ class WaveletDenoising:
         - 'sqtwolog' - The threshold is the sqrt(2*length(signal))
         - 'stein' - Stein's unbiased risk estimator
         - 'heurstein' - Heuristic of rigsure
-        - 'sure' - SURE estimator
         - 'energy' - Computes the energy of the coefficients and retains a
         predefined percentage of it.
-
-        @param resolution Determines the resolution of the SURE estimator
 
         @param energy_perc Energy level retained in the coefficients when one
         uses the energy thresholding method.
@@ -163,7 +159,6 @@ class WaveletDenoising:
         self.wavelet = wavelet
         self.level = level
         self.method = method
-        self.resolution = resolution
         self.thr_mode = thr_mode
         self.selected_level = selected_level
         self.recon_mode = recon_mode
@@ -324,7 +319,7 @@ class WaveletDenoising:
         # Apply the WAVEREC to reconstruct the signal
         denoised_signal = waverec(coeffs, self.filter_, mode=self.recon_mode)
 
-        # Renormalize in case the input signal was normalized to [0, 1]
+        # Inverse normalization in case the input signal was normalized
         if self.normalize:
             denoised_signal = self.scaler.inverse_transform(
                     denoised_signal.reshape(-1, 1))[:, 0]

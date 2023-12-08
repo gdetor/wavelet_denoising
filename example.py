@@ -62,7 +62,6 @@ def run_experiment(data, level=2, fs=1, nperseg=256, length=100):
                           thr_mode='soft',
                           selected_level=level,
                           method="universal",
-                          resolution=100,
                           energy_perc=0.90)
 
     # Run all the experiments, first element in res is the original data
@@ -83,17 +82,13 @@ def run_experiment(data, level=2, fs=1, nperseg=256, length=100):
 
 if __name__ == '__main__':
     # ECG Data
-    # fs = 100
-    # raw_data = pd.read_pickle("data/apnea_ecg.pkl")
-    # N = int(len(raw_data) // 1000)
-    # data = raw_data[:N].values
-    # data = data[:, 0]
-    # run_experiment(data, level=3, fs=fs)
-
-    data = np.zeros((128,))
-    data[:16] = 4
-    data += np.random.normal(0, 1, (128,))
-    run_experiment(data, level=3, length=100, nperseg=32)
+    import pandas as pd
+    fs = 100
+    raw_data = pd.read_pickle("./data/apnea_ecg.pkl")
+    N = int(len(raw_data) // 1000)
+    data = raw_data[:N].values
+    data = data[:, 0]
+    run_experiment(data, level=3, fs=fs)
 
     # EEG Data
     # raw_data = np.genfromtxt("./data/Z001.txt")
